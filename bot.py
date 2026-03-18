@@ -479,7 +479,298 @@ def list_vip(message):
 @bot.message_handler(commands=['admin'])
 def admin(message):
     if message.from_user.id != OWNER_ID:
-        bot.reply_to(message, "❌ Admin only!")
+        bot.reply_to(message, "Admin only!")
         return
     total_msgs = sum(u.get("messages", 0) for u in db["users"].values())
-    markup = I
+    markup = InlineKeyboardMarkup()
+    markup.row(
+        InlineKeyboardButton("Users", callback_data="admin_users"),
+        InlineKeyboardButton("Stats", callback_data="admin_stats")
+    )
+    markup.row(
+        InlineKeyboardButton("Banned", callback_data="admin_banned"),
+        InlineKeyboardButton("Pending", callback_data="admin_pending")
+    )
+    markup.row(
+        InlineKeyboardButton("Keys", callback_data="admin_keys"),
+        InlineKeyboardButton("Revenue", callback_data="admin_revenue")
+    )
+    markup.row(
+        InlineKeyboardButton("VIP", callback_data="admin_vip"),
+        InlineKeyboardButton("Broadcast", callback_data="admin_broadcast")
+    )
+    maint_text = "Maintenance: ON" if maintenance_mode else "Maintenance: OFF"
+    markup.add(InlineKeyboardButton(maint_text, callback_data="admin_maintenance"))
+    bot.reply_to(message, f"Admin Panel\n\nUsers: {len(db['users'])}\nMessages: {total_msgs}\nBanned: {len(db['banned'])}\nPending: {len(db['pending'])}\nKeys: {len(db['keys'])}\nVIP: {len(db['vip'])}\nRevenue: {db['revenue']['total']}", reply_markup=markup)
+
+@bot.callback_query_handler(func=lambda c: c.data.startswith("admin_"))
+def handle_admin(call):
+    global maintenance_mode
+    if call.from_user.id != OWNER_ID:
+        bot.answer_callback_query(call.id, "Admin only!")
+        return
+    if call.data == "admin_stats":
+        total_msgs = sum(u.get("messages", 0) for u in db["users"].values())
+        top = sorted(db["users"].items(), key=lambda x: x[1].get("messages", 0), reverse=True)[:5]
+        top_text = "\n".join([f"@{v.get('username','?')} - {v.get('messages',0)} msgs" for _, v in top])
+        bot.send_message(call.message.chat.id, f"Stats\n\nUsers: {len(db['users'])}\nMessages: {total_msgs}\n\nTop:\n{top_text}")
+    elif call.data == "admin_users":
+        if not db["users"]:
+            bot.send_message(call.message.chat.id, "No users!")
+            return
+        text = "Users:\n\n"
+        for uid, data in list(db["users"].items())[:15]:
+            text += f"@{data.get('username','?')} ({uid}) - {data.get('messages',0)} msgs\n"
+        bot.send_message(call.message.chat.id, text)
+    elif call.data == "admin_banned":
+        bot.send_message(call.message.chat.id, "Banned:\n" + "\n".join(db["banned"]) if db["banned"] else "No banned users!")
+    elif call.data == "admin_pending":
+        if not db["pending"]:
+            bot.send_message(call.message.chat.id, "No pending!")
+        else:
+            text = "Pending:\n\n"
+            for uid, d in db["pending"].items():
+                text += f"@{d['username']} ({uid}) - {d['plan_name']} - {d.get('utr','No UTR')}\n"
+            bot.send_message(call.message.chat.id, text)
+    elif call.data == "admin_keys":
+        if not db["keys"]:
+            bot.send_message(call.message.chat.id, "No keys!")
+        else:
+            text = "Keys:\n\n" + "".join([f"{k} - {v.get('name','?')} - {v.get('limit','?')} req\n" for k, v in list(db["keys"].items())[:10]])
+            bot.send_message(call.message.chat.id, text)
+    elif call.data == "admin_vip":
+        bot.send_message(call.message.chat.id, "VIP:\n" + "\n".join(db["vip"]) if db["vip"] else "No VIP users!")
+    elif call.data == "admin_revenue":
+        bot.send_message(call.message.chat.id, f"Revenue\n\nTotal: {db['revenue']['total']}\nTransactions: {len(db['revenue']['transactions'])}")
+    elif call.data == "admin_broadcast":
+        bot.send_message(call.message.chat.id, "Send broadcast message:")
+        bot.register_next_step_handler(call.message, do_broadcast)
+    elif call.data == "admin_maintenance":
+        maintenance_mode = not maintenance_mode
+        bot.send_message(call.message.chat.id, f"Maintenance: {'ON' if maintenance_mode else 'OFF'}")
+    bot.answer_callback_query(call.id)
+
+def do_broadcast(message):
+    if message.from_user.id != OWNER_ID: return
+    sent = failed = 0
+    for uid in db["users"].keys():
+        try:
+            bot.send_message(int(uid), f"Broadcast from Ace:\n\n{message.text}")
+            sent += 1
+        except:
+            failed += 1
+    bot.reply_to(message, f"Done!\nSent: {sent}\nFailed: {failed}")
+
+@bot.message_handler(commands=['ban'])
+def ban_user(message):
+    if message.from_user.id != OWNER_ID: return
+    try:
+        uid = str(int(message.text.split()[1]))
+        if uid not in db["banned"]: db["banned"].append(uid)
+        save_db()
+        bot.reply_to(message, f"Banned {uid}!")
+        bot.send_message(int(uid), "You have been banned.")
+    except:
+        bot.reply_to(message, "Usage: /ban <user_id>")
+
+@bot.message_handler(commands=['unban'])
+def unban_user(message):
+    if message.from_user.id != OWNER_ID: return
+    try:
+        uid = str(int(message.text.split()[1]))
+        if uid in db["banned"]: db["banned"].remove(uid)
+        save_db()
+        bot.reply_to(message, f"Unbanned {uid}!")
+        bot.send_message(int(uid), "You have been unbanned!")
+    except:
+        bot.reply_to(message, "Usage: /unban <user_id>")
+
+@bot.message_handler(commands=['addkey'])
+def add_key(message):
+    if message.from_user.id != OWNER_ID: return
+    try:
+        parts = message.text.split()
+        key, name, limit, expiry = parts[1], parts[2], int(parts[3]), parts[4]
+        db["keys"][key] = {"name": name, "limit": limit, "expiry": expiry}
+        save_db()
+        bot.reply_to(message, f"Key added! {key} - {name} - {limit} req")
+    except:
+        bot.reply_to(message, "Usage: /addkey <key> <n> <limit> <expiry>")
+
+@bot.message_handler(commands=['removekey'])
+def remove_key(message):
+    if message.from_user.id != OWNER_ID: return
+    try:
+        key = message.text.split()[1]
+        if key in db["keys"]:
+            del db["keys"][key]
+            save_db()
+            bot.reply_to(message, f"Key {key} removed!")
+        else:
+            bot.reply_to(message, "Key not found!")
+    except:
+        bot.reply_to(message, "Usage: /removekey <key>")
+
+@bot.message_handler(commands=['listkeys'])
+def list_keys(message):
+    if message.from_user.id != OWNER_ID: return
+    if not db["keys"]:
+        bot.reply_to(message, "No keys!")
+        return
+    text = "Keys:\n\n" + "".join([f"{k} - {v['name']} - {v['limit']} req - exp {v['expiry']}\n" for k, v in db["keys"].items()])
+    bot.reply_to(message, text)
+
+@bot.message_handler(commands=['viewuser'])
+def view_user(message):
+    if message.from_user.id != OWNER_ID: return
+    try:
+        uid = str(int(message.text.split()[1]))
+        data = db["users"].get(uid, {})
+        refs = len(db["referrals"].get(uid, []))
+        text = f"User Info\n\nID: {uid}\nUsername: @{data.get('username','N/A')}\nMessages: {data.get('messages',0)}\nPlan: {data.get('plan','free')}\nJoined: {data.get('joined','N/A')}\nReferrals: {refs}\nVIP: {'Yes' if uid in db['vip'] else 'No'}\nBanned: {'Yes' if uid in db['banned'] else 'No'}"
+        bot.reply_to(message, text)
+    except:
+        bot.reply_to(message, "Usage: /viewuser <user_id>")
+
+@bot.message_handler(commands=['approve'])
+def approve(message):
+    if message.from_user.id != OWNER_ID: return
+    try:
+        parts = message.text.split()
+        uid = str(int(parts[1]))
+        key = parts[2]
+        if uid in db["pending"]:
+            pending = db["pending"][uid]
+            utr = pending.get("utr", "")
+            plan_key = pending.get("plan", "basic")
+            plan = PLANS.get(plan_key, PLANS["basic"])
+            amount = plan["price"]
+            if utr and utr not in db["used_utrs"]:
+                db["used_utrs"].append(utr)
+            db["revenue"]["total"] += amount
+            db["revenue"]["transactions"].append({"uid": uid, "amount": amount, "plan": plan["name"], "utr": utr})
+            db["keys"][key] = {"name": pending["username"], "limit": plan["limit"], "expiry": "2099-12-31", "apis": plan["apis"]}
+            if plan_key in ["vip", "lifetime"] and uid not in db["vip"]:
+                db["vip"].append(uid)
+            if uid in db["users"]:
+                db["users"][uid]["plan"] = plan["name"]
+            del db["pending"][uid]
+            save_db()
+            bot.send_message(int(uid), f"Purchase Approved!\n\nPlan: {plan['name']}\nYour API Key: {key}\nAPIs: {plan['apis']}\nLimit: {plan['limit']} req/day\n\nEnjoy!")
+            if plan_key in ["vip", "lifetime"]:
+                bot.send_message(int(uid), "You are now a VIP user! Special treatment from Nyra activated!")
+            bot.reply_to(message, f"Approved! Key sent to {uid}\n+{amount} revenue!")
+        else:
+            bot.reply_to(message, "No pending purchase for this user!")
+    except Exception as e:
+        bot.reply_to(message, f"Usage: /approve <user_id> <key>\nError: {e}")
+
+@bot.message_handler(commands=['maintenance'])
+def toggle_maintenance(message):
+    global maintenance_mode
+    if message.from_user.id != OWNER_ID: return
+    maintenance_mode = not maintenance_mode
+    bot.reply_to(message, f"Maintenance: {'ON' if maintenance_mode else 'OFF'}")
+
+@bot.message_handler(commands=['setlimit'])
+def set_limit(message):
+    if message.from_user.id != OWNER_ID: return
+    try:
+        parts = message.text.split()
+        key, limit = parts[1], int(parts[2])
+        if key in db["keys"]:
+            db["keys"][key]["limit"] = limit
+            save_db()
+            bot.reply_to(message, f"Limit for {key} set to {limit}!")
+        else:
+            bot.reply_to(message, "Key not found!")
+    except:
+        bot.reply_to(message, "Usage: /setlimit <key> <limit>")
+
+@bot.message_handler(commands=['help'])
+def help(message):
+    if is_banned(message.from_user.id): return
+    vip = is_vip(message.from_user.id)
+    text = f"""Nyra Commands
+
+Type anything - chat with Nyra
+/stats - usage + referral link
+/memory - what Nyra remembers
+/clear - clear recent memory
+/language - switch language
+/ping - check bot speed
+/about - about Nyra + APIs
+/buy - purchase API key
+/verify <UTR> - verify payment
+/roast <n> - roast someone
+/compliment - get complimented
+/advice - life advice
+/truth - truth or dare
+
+Owner: {OWNER_USERNAME}"""
+    if vip:
+        text += "\n\nYou are VIP!"
+    bot.reply_to(message, text)
+
+@bot.message_handler(func=lambda message: True)
+def chat(message):
+    uid = message.from_user.id
+    if is_banned(uid):
+        bot.reply_to(message, "You are banned.")
+        return
+    if maintenance_mode and uid != OWNER_ID:
+        bot.reply_to(message, "Under maintenance. Try again later!")
+        return
+    if is_spamming(uid):
+        bot.reply_to(message, "Slow down!")
+        return
+
+    username = message.from_user.username or message.from_user.first_name
+    inc_stats(uid, username)
+    user_msg = message.text
+    lang = get_lang(uid)
+
+    add_history(uid, "user", user_msg)
+    update_profile(uid, user_msg)
+    bot.send_chat_action(message.chat.id, 'typing')
+
+    try:
+        context = build_context(uid)
+        lang_instruction = "Reply in Hindi. " if lang == "hi" else ""
+
+        if is_vip(uid) and uid != OWNER_ID:
+            mood_prompt = "You are Nyra - extra warm and attentive to this VIP user. Still bold and witty but give them extra care. They are VIP!"
+        elif uid == OWNER_ID:
+            mood_prompt = MOODS.get(owner_mood, MOODS["default"])
+        else:
+            mood_prompt = MOODS["default"]
+
+        full_msg = f"{lang_instruction}[Personality: {mood_prompt}][Context: {context}]\nUser says: {user_msg}"
+        res = requests.get(f"{NYRA_API}/{full_msg}?key={NYRA_KEY}", timeout=30).json()
+
+        if res.get("success"):
+            reply = res.get("reply", "...")
+            add_history(uid, "assistant", reply)
+            bot.reply_to(message, reply)
+        else:
+            bot.reply_to(message, "Hmm something went wrong, try again!")
+    except:
+        bot.reply_to(message, "I'm having a moment... try again!")
+
+def run_bot():
+    while True:
+        try:
+            print("Nyra is online!")
+            bot.infinity_polling(timeout=60, long_polling_timeout=60)
+        except Exception as e:
+            print(f"Bot error: {e}")
+            time.sleep(5)
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 10000))
+    thread = threading.Thread(target=run_bot)
+    thread.daemon = True
+    thread.start()
+    print(f"Starting Flask on port {port}")
+    app.run(host="0.0.0.0", port=port, threaded=True)
+        
