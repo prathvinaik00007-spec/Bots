@@ -76,8 +76,8 @@ owner_mood = "default"
 PLANS = {
     "basic": {"name": "Basic", "price": 49, "limit": 50, "apis": "nyra,allinfo", "duration": 30},
     "pro": {"name": "Pro", "price": 99, "limit": 200, "apis": "nyra,allinfo,axinnum", "duration": 30},
-    "vip": {"name": "VIP", "price": 199, "limit": 500, "apis": "nyra,allinfo,axinnum,axinscrapper", "duration": 30},
-    "lifetime": {"name": "Lifetime", "price": 999, "limit": 5000, "apis": "all", "duration": 36500}
+    "vip": {"name": "VIP", "price": 199, "limit": 999, "apis": "nyra,allinfo,axinnum,axinscrapper", "duration": 30},
+    "lifetime": {"name": "Lifetime", "price": 999, "limit": 9999, "apis": "all", "duration": 36500}
 }
 
 # --------------------------------
