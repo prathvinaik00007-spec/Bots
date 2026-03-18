@@ -746,7 +746,9 @@ def chat(message):
             mood_prompt = MOODS["default"]
 
         full_msg = f"{lang_instruction}[Personality: {mood_prompt}][Context: {context}]\nUser says: {user_msg}"
-        res = requests.get(f"{NYRA_API}/{full_msg}?key={NYRA_KEY}", timeout=30).json()
+        from urllib.parse import quote
+encoded_msg = quote(full_msg, safe='')
+res = requests.get(f"{NYRA_API}/{encoded_msg}?key={NYRA_KEY}", timeout=30).json()
 
         if res.get("success"):
             reply = res.get("reply", "...")
