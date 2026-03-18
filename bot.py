@@ -398,7 +398,7 @@ def verify_utr(message):
     utr = parts[1].strip()
     if not validate_utr(utr):
         bot.reply_to(message, "❌ Invalid UTR! UTR must be exactly 12 digits.\n\nExample: `/verify 123456789012`", parse_mode="Markdown")
-            return
+        return
     if utr in db["used_utrs"]:
         bot.reply_to(message, "❌ This UTR has already been used!")
         return
