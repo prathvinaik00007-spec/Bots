@@ -669,6 +669,7 @@ def run_bot():
     while True:
         try:
             print("Nyra is online!")
+            bot.delete_webhook(drop_pending_updates=True)
             bot.infinity_polling(timeout=60, long_polling_timeout=60)
         except Exception as e:
             print(f"Bot error: {e}")
