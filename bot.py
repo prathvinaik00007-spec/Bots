@@ -680,5 +680,5 @@ if __name__ == "__main__":
     thread.daemon = True
     thread.start()
     print(f"Starting Flask on port {port}")
-        app.run(host="0.0.0.0", port=port, threaded=True)
+    app.run(host="0.0.0.0", port=port, threaded=True)
                                  
