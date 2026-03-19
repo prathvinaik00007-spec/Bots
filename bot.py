@@ -762,7 +762,12 @@ def chat(message):
         else:
             mood_prompt = MOODS["default"]
 
-        full_msg = f"{lang_instruction}[Personality: {mood_prompt}][Context: {context}]\nUser says: {user_msg}"
+        full_msg = (
+             f"{lang_instruction}"
+             f"[Personality: {mood_prompt}]"
+             f"[Context: {context}]"
+             f"\nUser says: {user_msg}"
+        )
         from urllib.parse import quote
         encoded_msg = quote(full_msg, safe='')
         res = requests.get(f"{NYRA_API}/{encoded_msg}?key={NYRA_KEY}", timeout=30).json()
