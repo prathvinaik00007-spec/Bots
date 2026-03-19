@@ -773,9 +773,9 @@ def chat(message):
             bot.reply_to(message, reply)
         else:
             bot.reply_to(message, "Hmm something went wrong 😏 try again!")
-    except Exception as e:
-    print("ERROR:", e)
-    bot.reply_to(message, f"Error: {e}")
+        except Exception as e:
+            print("ERROR:", e)
+            bot.reply_to(message, f"Error: {e}")
 # --------------------------------
 # RUN
 # --------------------------------
